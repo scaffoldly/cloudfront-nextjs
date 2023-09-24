@@ -1,13 +1,13 @@
 {
-  "name": "cloudfront-nextjs-routes",
-  "version": "0.1.2-0",
-  "description": "Update a CloudFront Distribution with NextJS Routes",
-  "repository": "git@github.com:scaffoldly/cloudfront-nextjs-routes.git",
+  "name": "cloudfront-nextjs",
+  "version": "0.1.3-0",
+  "description": "CloudFront Distribution utility for NextJS",
+  "repository": "git@github.com:scaffoldly/cloudfront-nextjs.git",
   "author": "Scaffoldly",
   "bugs": {
-    "url": "https://github.com/scaffoldly/cloudfront-nextjs-routes/issues"
+    "url": "https://github.com/scaffoldly/cloudfront-nextjs/issues"
   },
-  "homepage": "https://github.com/scaffoldly/cloudfront-nextjs-routes#readme",
+  "homepage": "https://github.com/scaffoldly/cloudfront-nextjs#readme",
   "license": "Apache-2.0",
   "private": false,
   "scripts": {

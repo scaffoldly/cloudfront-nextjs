@@ -47,13 +47,23 @@ function sha256(buffer: Buffer) {
 
 export class Action {
   async run(): Promise<void> {
-    const distributionId = getInput('distribution-id', { required: true });
-    const lambdaRoleArn = getInput('lambda-edge-role', { required: true });
+    const distributionId =
+      getInput('distribution-id', { required: false }) || process.env.AWS_DISTRIBUTION_ID;
+    const lambdaEdgeRole =
+      getInput('lambda-edge-role', { required: false }) || process.env.AWS_LAMBDA_EDGE_ROLE;
     const workingDirectory = getInput('working-directory', { required: false }) || '.';
+
+    if (!distributionId) {
+      throw new Error("Missing required input 'distribution-id'");
+    }
+
+    if (!lambdaEdgeRole) {
+      throw new Error("Missing required input 'lambda-edge-role'");
+    }
 
     try {
       const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
-      const functionArn = await this.uploadLambda(distributionId, lambdaRoleArn, functionZipFile);
+      const functionArn = await this.uploadLambda(distributionId, lambdaEdgeRole, functionZipFile);
       await this.ensurePermissions(functionArn);
       await this.updateCloudFront(distributionId, functionArn);
     } catch (e: any) {

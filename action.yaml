@@ -6,10 +6,10 @@ branding:
 inputs:
   distribution-id:
     description: The CloudFront distribution ID
-    required: true
+    required: false
   lambda-edge-role:
     description: The Lambda@Edge Role
-    required: true
+    required: false
   working-directory:
     description: The working directory
     required: false

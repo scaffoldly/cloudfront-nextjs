@@ -1,6 +1,6 @@
 {
   "name": "cloudfront-nextjs-routes",
-  "version": "0.1.1-0",
+  "version": "0.1.1",
   "description": "Update a CloudFront Distribution with NextJS Routes",
   "repository": "git@github.com:scaffoldly/cloudfront-nextjs-routes.git",
   "author": "Scaffoldly",

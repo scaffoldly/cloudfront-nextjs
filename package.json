@@ -1,0 +1,67 @@
+{
+  "name": "cloudfront-nextjs-routes",
+  "version": "0.1.0",
+  "description": "Update a CloudFront Distribution with NextJS Routes",
+  "repository": "git@github.com:scaffoldly/cloudfront-nextjs-routes.git",
+  "author": "Scaffoldly",
+  "bugs": {
+    "url": "https://github.com/scaffoldly/cloudfront-nextjs-routes/issues"
+  },
+  "homepage": "https://github.com/scaffoldly/cloudfront-nextjs-routes#readme",
+  "license": "Apache-2.0",
+  "private": false,
+  "scripts": {
+    "build": "webpack",
+    "start": "ts-node src/index.ts",
+    "lint": "eslint 'src/**/*.{js,ts,tsx}' --quiet --fix && yarn run prettier --write 'src/**/*.{js,ts,tsx}'"
+  },
+  "main": "dist/main.js",
+  "files": [
+    "dist/main.js",
+    "dist/main.js.map"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "engineStrict": true,
+  "keywords": [
+    "scaffoldly",
+    "nextjs",
+    "aws",
+    "cloudfront",
+    "lambda",
+    "typescript",
+    "github",
+    "github-actions"
+  ],
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@aws-sdk/client-cloudfront": "^3.418.0",
+    "@aws-sdk/client-lambda": "^3.418.0",
+    "archiver": "^6.0.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.16.0",
+    "@babel/eslint-parser": "^7.16.0",
+    "@types/archiver": "^5.3.3",
+    "@types/js-yaml": "^4.0.5",
+    "@types/node": "16",
+    "@typescript-eslint/eslint-plugin": "^4.29.3",
+    "@typescript-eslint/parser": "^4.29.3",
+    "eslint": "^7.2.0",
+    "eslint-config-airbnb": "18.2.1",
+    "eslint-config-airbnb-typescript": "14.0.2",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-jsx-a11y": "^6.4.1",
+    "eslint-plugin-prettier": "^4.0.0",
+    "prettier": "^2.4.1",
+    "source-map": "^0.7.3",
+    "ts-loader": "^9.2.6",
+    "ts-node": "^10.4.0",
+    "typescript": "^4.5.4",
+    "webpack": "^5.65.0",
+    "webpack-cli": "^4.9.1",
+    "webpack-node-externals": "^3.0.0"
+  }
+}

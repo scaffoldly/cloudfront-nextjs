@@ -1,0 +1,11 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/404": "pages/404.html",
+  "/[guestId]": "pages/[guestId].html",
+  "/doc-viewer/[userId]/[date]": "pages/doc-viewer/[userId]/[date].html",
+  "/doc-viewer": "pages/doc-viewer.html",
+  "/new-signature": "pages/new-signature.html",
+  "/": "pages/index.html"
+}

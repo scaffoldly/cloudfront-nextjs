@@ -1,0 +1,22 @@
+name: 'Next.js CloudFront Router Action'
+description: 'Update a CloudFront Distribution to route a Next.js app'
+branding:
+  icon: 'arrow-up-circle'
+  color: 'blue'
+inputs:
+  distribution-id:
+    description: The CloudFront distribution ID
+    required: true
+  lambda-execution-role-arn:
+    description: The Lambda Role Execution Arn
+    required: true
+  working-directory:
+    description: The working directory
+    required: false
+    default: '.'
+outputs:
+  todo:
+    description: The todo description
+runs:
+  using: 'node16'
+  main: 'dist/main.js'

@@ -22,7 +22,7 @@ function sha256(buffer: Buffer) {
 export class Action {
   async run(): Promise<void> {
     const distributionId = getInput('distribution-id', { required: true });
-    const lambdaRoleArn = getInput('lambda-execution-role-arn', { required: true });
+    const lambdaRoleArn = getInput('lambda-edge-role', { required: true });
     const workingDirectory = getInput('working-directory', { required: false }) || '.';
 
     try {

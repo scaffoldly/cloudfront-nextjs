@@ -7,8 +7,8 @@ inputs:
   distribution-id:
     description: The CloudFront distribution ID
     required: true
-  lambda-execution-role-arn:
-    description: The Lambda Role Execution Arn
+  lambda-edge-role:
+    description: The Lambda@Edge Role
     required: true
   working-directory:
     description: The working directory

@@ -15,6 +15,32 @@ import fs from 'fs';
 import archiver from 'archiver';
 import crypto from 'crypto';
 
+const LAMBDA_FN = `
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request;
+  const uri = request.uri;
+
+  // Function to remove /pages prefix
+  const removePagesPrefix = (path) => {
+    return path.replace('/pages', '');
+  };
+
+  // Find matching route, ensuring route.regex is present
+  const matchedRoute = combinedRoutes.find((route) => {
+    if (!route.regex) return false;
+    const regex = new RegExp(route.regex);
+    return regex.test(uri) && !!pagesManifest[route.page];
+  });
+
+  if (matchedRoute) {
+    request.uri = removePagesPrefix(pagesManifest[matchedRoute.page]);
+    return request;
+  }
+
+  return request;
+};
+`;
+
 function sha256(buffer: Buffer) {
   return crypto.createHash('sha256').update(buffer).digest('base64');
 }
@@ -38,16 +64,30 @@ export class Action {
   async bundleLambda(workingDirectory: string, distributionId: string): Promise<string> {
     info('Bundling Lambda Function...');
 
-    const workdir = fs.mkdtempSync(distributionId);
-    fs.copyFileSync('../origin-request-lambda/index.js', `${workdir}/index.js`);
-    fs.copyFileSync(
-      `${workingDirectory}/.next/routes-manifest.json`,
-      `${workdir}/routes-manifest.json`,
-    );
-    fs.copyFileSync(
-      `${workingDirectory}/.next/server/pages-manifest.json`,
-      `${workdir}/pages-manifest.json`,
-    );
+    const routesManifest = fs
+      .readFileSync(`${workingDirectory}/.next/routes-manifest.json`)
+      .toString();
+    info(`Routes Manifest:\n${routesManifest}`);
+
+    const pagesManifest = fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`);
+    info(`Pages Manifest:\n${routesManifest}`);
+
+    let lambdaFn = `
+const routesManifest = ${JSON.stringify(routesManifest)};    
+const pagesManifest = ${JSON.stringify(pagesManifest)};
+
+// Combine dynamic and static routes into a single array in the global scope, ensuring they exist or defaulting to empty arrays
+const combinedRoutes = [
+    ...(routesManifest.dynamicRoutes || []),
+    ...(routesManifest.staticRoutes || []),
+];
+
+${LAMBDA_FN}
+    `;
+
+    const workdir = fs.mkdtempSync(`${distributionId}`);
+    const lambdaFile = `${workdir}/index.js`;
+    fs.writeFileSync(lambdaFile, lambdaFn);
 
     const lambdadir = fs.mkdtempSync(`${distributionId}-lambda`);
 
@@ -79,7 +119,7 @@ export class Action {
   ): Promise<string> {
     info('Uploading Lambda Function...');
 
-    const runtime = 'nodejs18';
+    const runtime = 'nodejs18'; // the ".x" is appended when the function is created
     const functionName = `cloudfront-${distributionId}-originrequest-${runtime}`;
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
 

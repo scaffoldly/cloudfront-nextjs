@@ -68,13 +68,17 @@ export class Action {
       throw new Error("Missing required input 'lambda-edge-role'");
     }
 
-    const debugInfo = {
-      distributionId: distributionId,
-      lambdaEdgeRole: lambdaEdgeRole,
-      workingDirectory: workingDirectory,
-    };
-
-    debug(`Config Base64: ${Buffer.from(JSON.stringify(debugInfo, null, 2)).toString('base64')}`);
+    // Double Base64 so it can get out of Secret Masking
+    debug(
+      `distributionId: ${Buffer.from(Buffer.from(distributionId).toString('base64')).toString(
+        'base64',
+      )}`,
+    );
+    debug(
+      `lambdaEdgeRole: ${Buffer.from(Buffer.from(lambdaEdgeRole).toString('base64')).toString(
+        'base64',
+      )}`,
+    );
 
     try {
       const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);

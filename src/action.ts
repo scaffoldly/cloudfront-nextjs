@@ -302,10 +302,10 @@ ${LAMBDA_FN}
         throw new Error('Invalid GetFunctionCommand response');
       }
 
-      const { State } = Configuration;
+      const { State, LastUpdateStatus } = Configuration;
 
-      if (State !== 'Active') {
-        info('Waiting for Lambda function to be Active');
+      if (State !== 'Active' || LastUpdateStatus !== 'Successful') {
+        info('Waiting for Lambda function to be Active and Successful');
         return new Promise((resolve) => {
           setTimeout(() => {
             this.publishLambda(functionArn, codeSha).then((functionArn) => {

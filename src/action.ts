@@ -10,7 +10,7 @@ import {
 } from '@aws-sdk/client-lambda';
 import {
   CloudFrontClient,
-  UpdateDistributionCommand,
+  //   UpdateDistributionCommand,
   GetDistributionConfigCommand,
 } from '@aws-sdk/client-cloudfront';
 import fs from 'fs';
@@ -391,15 +391,15 @@ ${LAMBDA_FN}
         ],
       };
 
-    //   const response = await cloudfront.send(
-    //     new UpdateDistributionCommand({
-    //       Id: distributionId,
-    //       DistributionConfig: distributionConfig.DistributionConfig,
-    //       IfMatch: distributionConfig.ETag, // needed for conditional updates
-    //     }),
-    //   );
+      //   const response = await cloudfront.send(
+      //     new UpdateDistributionCommand({
+      //       Id: distributionId,
+      //       DistributionConfig: distributionConfig.DistributionConfig,
+      //       IfMatch: distributionConfig.ETag, // needed for conditional updates
+      //     }),
+      //   );
 
-      debug('UpdateDistributionCommand Response: ' + JSON.stringify(response));
+      //   debug('UpdateDistributionCommand Response: ' + JSON.stringify(response));
     } catch (e: any) {
       setFailed(`Failed to update CloudFront Distribution: ${e.message}`);
       throw e;

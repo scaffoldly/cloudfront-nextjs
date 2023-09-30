@@ -1,6 +1,6 @@
 {
   "name": "cloudfront-nextjs",
-  "version": "0.1.4-10",
+  "version": "0.1.4-11",
   "description": "CloudFront Distribution utility for NextJS",
   "repository": "git@github.com:scaffoldly/cloudfront-nextjs.git",
   "author": "Scaffoldly",

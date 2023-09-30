@@ -6,6 +6,7 @@ import {
   GetFunctionCommand,
   UpdateFunctionCodeCommand,
   AddPermissionCommand,
+  PublishVersionCommand,
 } from '@aws-sdk/client-lambda';
 import {
   CloudFrontClient,
@@ -83,30 +84,39 @@ export class Action {
 
     try {
       const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
-      const functionArn = await this.uploadLambda(
+      let { functionArn, codeSha, changed } = await this.uploadLambda(
         functionNamePrefix,
         lambdaEdgeRole,
         functionZipFile,
       );
+
       await this.ensurePermissions(functionArn);
-      await this.updateCloudFront(distributionId, functionArn);
+
+      if (changed) {
+        functionArn = await this.publishLambda(functionArn, codeSha);
+        await this.updateCloudFront(distributionId, functionArn);
+      }
     } catch (e: any) {
       setFailed(e.message);
+      // throw e;
     }
   }
 
   async bundleLambda(workingDirectory: string, distributionId: string): Promise<string> {
     info('Bundling Lambda Function...');
 
-    const routesManifest = fs
-      .readFileSync(`${workingDirectory}/.next/routes-manifest.json`)
-      .toString();
+    const routesManifest = JSON.stringify(
+      JSON.parse(fs.readFileSync(`${workingDirectory}/.next/routes-manifest.json`).toString()),
+    );
 
     debug(`Routes Manifest:\n${routesManifest}`);
 
-    const pagesManifest = fs
-      .readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`)
-      .toString();
+    const pagesManifest = JSON.stringify(
+      JSON.parse(
+        fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`).toString(),
+      ),
+    );
+
     debug(`Pages Manifest:\n${pagesManifest}`);
 
     let lambdaFn = `
@@ -125,7 +135,7 @@ const pagesManifest = ${pagesManifest};
 
 // Combine dynamic and static routes into a single array in the global scope, ensuring they exist or defaulting to empty arrays
 const combinedRoutes = [
-    ...(routesManifest).dynamicRoutes || []),
+    ...(routesManifest.dynamicRoutes || []),
     ...(routesManifest.staticRoutes || []),
 ];
 
@@ -177,7 +187,7 @@ ${LAMBDA_FN}
     functionNamePrefix: string,
     roleArn: string,
     functionZipFile: string,
-  ): Promise<string> {
+  ): Promise<{ functionArn: string; codeSha: string; changed: boolean }> {
     info('Uploading Lambda Function...');
     const functionName = `${functionNamePrefix}origin-request`;
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
@@ -191,14 +201,29 @@ ${LAMBDA_FN}
 
       // Attempt to fetch the function and its CodeSha256 property
       try {
-        const { Configuration } = await lambdaClient.send(
+        const response = await lambdaClient.send(
           new GetFunctionCommand({ FunctionName: functionName }),
         );
-        if (Configuration && Configuration.CodeSha256 && Configuration.FunctionArn) {
-          info(`Exsiting Function SHA: ${localSha}`);
-          remoteSha = Configuration.CodeSha256;
-          functionArn = Configuration.FunctionArn;
+
+        debug('GetFunctionCommand Response: ' + JSON.stringify(response));
+
+        const { Configuration } = response;
+        if (!Configuration) {
+          throw new Error('Invalid GetFunctionCommand response');
         }
+
+        const { FunctionArn, CodeSha256 } = Configuration;
+
+        if (!FunctionArn || !CodeSha256) {
+          throw new Error(
+            'FunctionArn or CodeSha256 was missing from the GetFunctionCommand response',
+          );
+        }
+
+        info(`Exsiting Function SHA: ${localSha}`);
+
+        functionArn = FunctionArn;
+        remoteSha = CodeSha256;
       } catch (error: any) {
         if (error.name !== 'ResourceNotFoundException') {
           throw error;
@@ -207,7 +232,7 @@ ${LAMBDA_FN}
 
       if (functionArn && localSha === remoteSha) {
         info('Function code has not changed, skipping upload');
-        return functionArn;
+        return { functionArn, codeSha: remoteSha, changed: false };
       }
 
       if (remoteSha) {
@@ -218,36 +243,68 @@ ${LAMBDA_FN}
           }),
         );
 
-        if (!response.FunctionArn) {
-          throw new Error('FunctionArn was missing from the UpdateFunctionCodeCommand response');
+        debug('UpdateFunctionCodeCommand Response: ' + JSON.stringify(response));
+
+        const { FunctionArn, CodeSha256 } = response;
+
+        if (!FunctionArn || !CodeSha256) {
+          throw new Error('Invalid UpdateFunctionCodeCommand response');
         }
 
         info(`Function code updated: ${response.FunctionArn}`);
 
-        return response.FunctionArn;
+        return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
+      } else {
+        const response = await lambdaClient.send(
+          new CreateFunctionCommand({
+            FunctionName: functionName,
+            Role: roleArn,
+            Handler: 'index.handler',
+            Code: {
+              ZipFile,
+            },
+            Runtime: 'nodejs18.x',
+          }),
+        );
+
+        debug('CreateFunctionCommand Response: ' + JSON.stringify(response));
+
+        const { FunctionArn, CodeSha256 } = response;
+
+        if (!FunctionArn || !CodeSha256) {
+          throw new Error('FunctionArn was missing from the CreateFunctionCommand response');
+        }
+
+        info(`Function created: ${response.FunctionArn}`);
+
+        return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       }
-
-      const response = await lambdaClient.send(
-        new CreateFunctionCommand({
-          FunctionName: functionName,
-          Role: roleArn,
-          Handler: 'index.handler',
-          Code: {
-            ZipFile,
-          },
-          Runtime: 'nodejs18.x',
-        }),
-      );
-
-      if (!response.FunctionArn) {
-        throw new Error('FunctionArn was missing from the CreateFunctionCommand response');
-      }
-
-      info(`Function created: ${response.FunctionArn}`);
-
-      return response.FunctionArn;
     } catch (e: any) {
       setFailed(`Failed to upload Lambda Function: ${e.message}`);
+      throw e;
+    }
+  }
+
+  async publishLambda(functionArn: string, codeSha: string): Promise<string> {
+    info('Publishing Lambda Function Version...');
+    const lambdaClient = new LambdaClient({ region: 'us-east-1' });
+
+    try {
+      const response = await lambdaClient.send(
+        new PublishVersionCommand({ FunctionName: functionArn, CodeSha256: codeSha }),
+      );
+
+      debug('PublishVersionCommand Response: ' + JSON.stringify(response));
+
+      const { FunctionArn, Version } = response;
+
+      if (!FunctionArn || !Version) {
+        throw new Error('Invalid PublishVersionCommand response');
+      }
+
+      return `${FunctionArn}:${Version}`;
+    } catch (e: any) {
+      setFailed(`Failed to publish Lambda Function: ${e.message}`);
       throw e;
     }
   }
@@ -256,7 +313,7 @@ ${LAMBDA_FN}
     const lambda = new LambdaClient({ region: 'us-east-1' });
 
     try {
-      await lambda.send(
+      const response = await lambda.send(
         new AddPermissionCommand({
           Action: 'lambda:InvokeFunction',
           FunctionName: functionArn,
@@ -264,6 +321,8 @@ ${LAMBDA_FN}
           StatementId: 'AllowCloudFrontInvoke',
         }),
       );
+
+      debug('AddPermissionCommand Response: ' + JSON.stringify(response));
     } catch (e: any) {
       if (e.name !== 'ResourceConflictException') {
         throw e;
@@ -272,7 +331,7 @@ ${LAMBDA_FN}
   }
 
   async updateCloudFront(distributionId: string, functionArn: string): Promise<void> {
-    info("Updating CloudFront Distribution's DefaultCacheBehavior...");
+    info(`Updating CloudFront Origin Request with Functiion ARN: ${functionArn}`);
 
     const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
 
@@ -302,13 +361,15 @@ ${LAMBDA_FN}
         ],
       };
 
-      await cloudfront.send(
+      const response = await cloudfront.send(
         new UpdateDistributionCommand({
           Id: distributionId,
           DistributionConfig: distributionConfig.DistributionConfig,
           IfMatch: distributionConfig.ETag, // needed for conditional updates
         }),
       );
+
+      debug('UpdateDistributionCommand Response: ' + JSON.stringify(response));
     } catch (e: any) {
       setFailed(`Failed to update CloudFront Distribution: ${e.message}`);
       throw e;

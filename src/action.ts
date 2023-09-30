@@ -291,6 +291,36 @@ ${LAMBDA_FN}
 
     try {
       const response = await lambdaClient.send(
+        new GetFunctionCommand({ FunctionName: functionArn }),
+      );
+
+      debug('GetFunctionCommand Response: ' + JSON.stringify(response));
+
+      const { Configuration } = response;
+
+      if (!Configuration) {
+        throw new Error('Invalid GetFunctionCommand response');
+      }
+
+      const { State } = Configuration;
+
+      if (State !== 'Active') {
+        info('Waiting for Lambda function to be Active');
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            this.publishLambda(functionArn, codeSha).then((functionArn) => {
+              resolve(functionArn);
+            });
+          }, 1000);
+        });
+      }
+    } catch (e: any) {
+      setFailed(`Failed to get Lambda Function: ${e.message}`);
+      throw e;
+    }
+
+    try {
+      const response = await lambdaClient.send(
         new PublishVersionCommand({ FunctionName: functionArn, CodeSha256: codeSha }),
       );
 

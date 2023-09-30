@@ -1,4 +1,5 @@
 import { debug, getInput, info, setFailed } from '@actions/core';
+import * as artifact from '@actions/artifact';
 import {
   LambdaClient,
   CreateFunctionCommand,
@@ -155,6 +156,18 @@ ${LAMBDA_FN}
     archive.directory(workdir, false);
 
     await archive.finalize();
+
+    const lambdaArtifact = artifact.create();
+
+    const artifactResponse = await lambdaArtifact.uploadArtifact(
+      'lambda.zip',
+      [outputFile],
+      lambdadir,
+      {
+        continueOnError: true,
+      },
+    );
+    debug('Upload Artifact Response: ' + JSON.stringify(artifactResponse));
 
     return outputFile;
   }

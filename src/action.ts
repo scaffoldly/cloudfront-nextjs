@@ -119,13 +119,14 @@ export class Action {
 *     Purpose: CloudFront Origin Request for Next.js
 *
 */
-const routesManifest = ${JSON.stringify(routesManifest)}; 
-const pagesManifest = ${JSON.stringify(pagesManifest)};
+const routesManifest = ${routesManifest};
+
+const pagesManifest = ${pagesManifest};
 
 // Combine dynamic and static routes into a single array in the global scope, ensuring they exist or defaulting to empty arrays
 const combinedRoutes = [
-    ...((routesManifest || {}).dynamicRoutes || []),
-    ...((routesManifest || {}).staticRoutes || []),
+    ...(routesManifest).dynamicRoutes || []),
+    ...(routesManifest.staticRoutes || []),
 ];
 
 ${LAMBDA_FN}

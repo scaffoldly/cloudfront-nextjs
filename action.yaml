@@ -7,6 +7,9 @@ inputs:
   distribution-id:
     description: The CloudFront distribution ID
     required: false
+  function-name-prefix:
+    description: The Lambda@Edge function name prefix. Defaults to `{repositoryName}-{distributionId}-`.
+    required: false.
   lambda-edge-role:
     description: The Lambda@Edge Role
     required: false

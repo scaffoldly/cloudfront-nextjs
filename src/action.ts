@@ -15,6 +15,8 @@ import fs from 'fs';
 import archiver from 'archiver';
 import crypto from 'crypto';
 
+const { GITHUB_REPOSITORY } = process.env;
+
 const LAMBDA_FN = `
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -53,6 +55,11 @@ export class Action {
       getInput('lambda-edge-role', { required: false }) || process.env.AWS_LAMBDA_EDGE_ROLE;
     const workingDirectory = getInput('working-directory', { required: false }) || '.';
 
+    const [, repository] = (GITHUB_REPOSITORY || '').split('/');
+
+    const functionNamePrefix =
+      getInput('function-name-prefix', { required: false }) || `${repository}-${distributionId}-`;
+
     if (!distributionId) {
       throw new Error("Missing required input 'distribution-id'");
     }
@@ -63,7 +70,11 @@ export class Action {
 
     try {
       const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
-      const functionArn = await this.uploadLambda(distributionId, lambdaEdgeRole, functionZipFile);
+      const functionArn = await this.uploadLambda(
+        functionNamePrefix,
+        lambdaEdgeRole,
+        functionZipFile,
+      );
       await this.ensurePermissions(functionArn);
       await this.updateCloudFront(distributionId, functionArn);
     } catch (e: any) {
@@ -77,13 +88,22 @@ export class Action {
     const routesManifest = fs
       .readFileSync(`${workingDirectory}/.next/routes-manifest.json`)
       .toString();
-    info(`Routes Manifest:\n${routesManifest}`);
+    info(`Routes Manifest:\n${JSON.stringify(routesManifest, null, 2)}`);
 
     const pagesManifest = fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`);
-    info(`Pages Manifest:\n${routesManifest}`);
+    info(`Pages Manifest:\n${JSON.stringify(pagesManifest, null, 2)}`);
 
     let lambdaFn = `
-const routesManifest = ${JSON.stringify(routesManifest)};    
+/*
+* This script is managed by the cloudfront-nextjs GitHub Action.
+*
+*     GitHub Repository: ${GITHUB_REPOSITORY}
+*     Distrubition ID: ${distributionId}
+*     Runtime: nodejs18.x
+*     Purpose: CloudFront Origin Request for Next.js
+*
+*/
+const routesManifest = ${JSON.stringify(routesManifest)}; 
 const pagesManifest = ${JSON.stringify(pagesManifest)};
 
 // Combine dynamic and static routes into a single array in the global scope, ensuring they exist or defaulting to empty arrays
@@ -95,11 +115,13 @@ const combinedRoutes = [
 ${LAMBDA_FN}
     `;
 
-    const workdir = fs.mkdtempSync(`${distributionId}`);
+    const workdir = `/tmp/${distributionId}`;
+    const lambdadir = `/tmp/${distributionId}-lambda`;
+    fs.mkdirSync(workdir);
+    fs.mkdirSync(lambdadir);
+
     const lambdaFile = `${workdir}/index.js`;
     fs.writeFileSync(lambdaFile, lambdaFn);
-
-    const lambdadir = fs.mkdtempSync(`${distributionId}-lambda`);
 
     const outputFile = `${lambdadir}/lambda.zip`;
     const output = fs.createWriteStream(outputFile);
@@ -123,14 +145,12 @@ ${LAMBDA_FN}
   }
 
   async uploadLambda(
-    distributionId: string,
+    functionNamePrefix: string,
     roleArn: string,
     functionZipFile: string,
   ): Promise<string> {
     info('Uploading Lambda Function...');
-
-    const runtime = 'nodejs18'; // the ".x" is appended when the function is created
-    const functionName = `cloudfront-${distributionId}-originrequest-${runtime}`;
+    const functionName = `${functionNamePrefix}origin-request`;
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
 
     try {
@@ -186,7 +206,7 @@ ${LAMBDA_FN}
           Code: {
             ZipFile,
           },
-          Runtime: `${runtime}.x`,
+          Runtime: 'nodejs18.x',
         }),
       );
 

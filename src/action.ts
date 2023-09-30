@@ -1,4 +1,4 @@
-import { getInput, info, setFailed } from '@actions/core';
+import { debug, getInput, info, setFailed } from '@actions/core';
 import {
   LambdaClient,
   CreateFunctionCommand,
@@ -68,6 +68,14 @@ export class Action {
       throw new Error("Missing required input 'lambda-edge-role'");
     }
 
+    const debugInfo = {
+      distributionId: distributionId,
+      lambdaEdgeRole: lambdaEdgeRole,
+      workingDirectory: workingDirectory,
+    };
+
+    debug(`Config Base64: ${Buffer.from(JSON.stringify(debugInfo, null, 2)).toString('base64')}`);
+
     try {
       const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
       const functionArn = await this.uploadLambda(
@@ -88,10 +96,13 @@ export class Action {
     const routesManifest = fs
       .readFileSync(`${workingDirectory}/.next/routes-manifest.json`)
       .toString();
-    info(`Routes Manifest:\n${JSON.stringify(routesManifest, null, 2)}`);
 
-    const pagesManifest = fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`);
-    info(`Pages Manifest:\n${JSON.stringify(pagesManifest, null, 2)}`);
+    debug(`Routes Manifest:\n${routesManifest}`);
+
+    const pagesManifest = fs
+      .readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`)
+      .toString();
+    debug(`Pages Manifest:\n${pagesManifest}`);
 
     let lambdaFn = `
 /*
@@ -108,8 +119,8 @@ const pagesManifest = ${JSON.stringify(pagesManifest)};
 
 // Combine dynamic and static routes into a single array in the global scope, ensuring they exist or defaulting to empty arrays
 const combinedRoutes = [
-    ...(routesManifest.dynamicRoutes || []),
-    ...(routesManifest.staticRoutes || []),
+    ...((routesManifest || {}).dynamicRoutes || []),
+    ...((routesManifest || {}).staticRoutes || []),
 ];
 
 ${LAMBDA_FN}

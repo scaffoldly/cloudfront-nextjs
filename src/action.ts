@@ -326,13 +326,13 @@ ${LAMBDA_FN}
 
       debug('PublishVersionCommand Response: ' + JSON.stringify(response));
 
-      const { FunctionArn, Version } = response;
+      const { FunctionArn } = response;
 
-      if (!FunctionArn || !Version) {
+      if (!FunctionArn) {
         throw new Error('Invalid PublishVersionCommand response');
       }
 
-      return `${FunctionArn}:${Version}`;
+      return FunctionArn;
     } catch (e: any) {
       setFailed(`Failed to publish Lambda Function: ${e.message}`);
       throw e;

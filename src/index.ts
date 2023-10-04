@@ -11,6 +11,9 @@ const pe = new PrettyError();
   } catch (e) {
     if (e instanceof Error) {
       debug(pe.render(e));
+      if (e.cause) {
+        debug(`Caused by: ${pe.render(e.cause)}`);
+      }
       setFailed(e.message);
       return;
     }

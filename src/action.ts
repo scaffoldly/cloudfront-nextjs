@@ -218,6 +218,8 @@ ${LAMBDA_FN}
       const ZipFile = fs.readFileSync(functionZipFile);
       const localSha = sha256(ZipFile);
 
+      info(`Local Function SHA: ${localSha}`);
+
       let remoteSha: string | undefined = undefined;
       let functionArn: string | undefined = undefined;
 
@@ -242,7 +244,7 @@ ${LAMBDA_FN}
           );
         }
 
-        info(`Exsiting Function SHA: ${localSha}`);
+        info(`Existing Function SHA: ${localSha}`);
 
         functionArn = FunctionArn;
         remoteSha = CodeSha256;
@@ -273,7 +275,7 @@ ${LAMBDA_FN}
           throw new Error('Invalid UpdateFunctionCodeCommand response');
         }
 
-        info(`Function code updated: ${response.FunctionArn}`);
+        info(`Function code updated: ${response.FunctionArn}, new sha is ${CodeSha256}`);
 
         return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       } else {
@@ -297,7 +299,7 @@ ${LAMBDA_FN}
           throw new Error('FunctionArn was missing from the CreateFunctionCommand response');
         }
 
-        info(`Function created: ${response.FunctionArn}`);
+        info(`Function created: ${response.FunctionArn}, sha is ${CodeSha256}`);
 
         return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       }
@@ -400,7 +402,22 @@ ${LAMBDA_FN}
         throw new Error('DistributionConfig is missing properties');
       }
 
-      distributionConfig.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations = {
+      let { LambdaFunctionAssociations: lambdas } =
+        distributionConfig.DistributionConfig.DefaultCacheBehavior;
+
+      if (
+        lambdas &&
+        lambdas.Quantity == 1 &&
+        lambdas.Items &&
+        lambdas.Items.length == 1 &&
+        lambdas.Items[0].EventType == 'origin-request' &&
+        lambdas.Items[0].LambdaFunctionARN == functionArn
+      ) {
+        info('Lambda Function already configured, skipping update');
+        return;
+      }
+
+      lambdas = {
         Quantity: 1,
         Items: [
           {
@@ -410,6 +427,17 @@ ${LAMBDA_FN}
           },
         ],
       };
+
+      info(
+        `Updating Lambda Function Associations for the Default Cache Behavior:\n${JSON.stringify(
+          lambdas,
+          null,
+          2,
+        )}`,
+      );
+
+      distributionConfig.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations =
+        lambdas;
 
       const response = await cloudfront.send(
         new UpdateDistributionCommand({

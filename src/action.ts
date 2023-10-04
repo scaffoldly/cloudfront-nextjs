@@ -6,7 +6,6 @@ import {
   GetFunctionCommand,
   UpdateFunctionCodeCommand,
   AddPermissionCommand,
-  PublishVersionCommand,
 } from '@aws-sdk/client-lambda';
 import {
   CloudFrontClient,
@@ -87,18 +86,16 @@ export class Action {
     );
 
     const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
-    let { functionArn, codeSha, changed } = await this.uploadLambda(
+    let { functionArn, codeSha } = await this.uploadLambda(
       functionNamePrefix,
       lambdaEdgeRole,
       functionZipFile,
     );
 
-    await this.ensurePermissions(functionArn);
+    functionArn = await this.awaitPublish(functionArn, codeSha);
 
-    if (changed) {
-      functionArn = await this.publishLambda(functionArn, codeSha);
-      await this.updateCloudFront(distributionId, functionArn);
-    }
+    await this.ensurePermissions(functionArn);
+    await this.updateCloudFront(distributionId, functionArn);
 
     if (invalidate) {
       await this.invalidateCloudFront(distributionId, invalidate);
@@ -209,7 +206,7 @@ ${LAMBDA_FN}
     functionNamePrefix: string,
     roleArn: string,
     functionZipFile: string,
-  ): Promise<{ functionArn: string; codeSha: string; changed: boolean }> {
+  ): Promise<{ functionArn: string; codeSha: string }> {
     info('Uploading Lambda Function...');
     const functionName = `${functionNamePrefix}origin-request`;
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
@@ -257,7 +254,7 @@ ${LAMBDA_FN}
 
       if (functionArn && remoteSha && localSha.trim() === remoteSha.trim()) {
         info('Function code has not changed, skipping upload');
-        return { functionArn, codeSha: remoteSha, changed: false };
+        return { functionArn, codeSha: remoteSha };
       }
 
       if (remoteSha) {
@@ -265,6 +262,7 @@ ${LAMBDA_FN}
           new UpdateFunctionCodeCommand({
             FunctionName: functionName,
             ZipFile,
+            Publish: true,
           }),
         );
 
@@ -278,7 +276,7 @@ ${LAMBDA_FN}
 
         info(`Function code updated: ${response.FunctionArn}, new sha is ${CodeSha256}`);
 
-        return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
+        return { functionArn: FunctionArn, codeSha: CodeSha256 };
       } else {
         const response = await lambdaClient.send(
           new CreateFunctionCommand({
@@ -289,6 +287,7 @@ ${LAMBDA_FN}
               ZipFile,
             },
             Runtime: RUNTIME,
+            Publish: true,
           }),
         );
 
@@ -302,14 +301,14 @@ ${LAMBDA_FN}
 
         info(`Function created: ${response.FunctionArn}, sha is ${CodeSha256}`);
 
-        return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
+        return { functionArn: FunctionArn, codeSha: CodeSha256 };
       }
     } catch (err: unknown) {
       throw new Error(`Error uploading Lambda Function`, { cause: err });
     }
   }
 
-  async publishLambda(functionArn: string, codeSha: string): Promise<string> {
+  async awaitPublish(functionArn: string, codeSha: string): Promise<string> {
     info('Publishing Lambda Function Version...');
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
 
@@ -330,34 +329,22 @@ ${LAMBDA_FN}
 
       if (State !== 'Active' || LastUpdateStatus !== 'Successful') {
         info('Waiting for Lambda function to be Active and Successful');
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           setTimeout(() => {
-            this.publishLambda(functionArn, codeSha).then((functionArn) => {
-              resolve(functionArn);
-            });
+            try {
+              this.awaitPublish(functionArn, codeSha).then((functionArn) => {
+                resolve(functionArn);
+              });
+            } catch (e: unknown) {
+              reject(e);
+            }
           }, 1000);
         });
       }
+
+      return functionArn;
     } catch (err: any) {
       throw new Error(`Error getting Lambda Function`, { cause: err });
-    }
-
-    try {
-      const response = await lambdaClient.send(
-        new PublishVersionCommand({ FunctionName: functionArn, CodeSha256: codeSha }),
-      );
-
-      debug('PublishVersionCommand Response: ' + JSON.stringify(response));
-
-      const { FunctionArn } = response;
-
-      if (!FunctionArn) {
-        throw new Error('Invalid PublishVersionCommand response');
-      }
-
-      return FunctionArn;
-    } catch (err: any) {
-      throw new Error(`Error publishing Lambda Function`, { cause: err });
     }
   }
 

@@ -1,5 +1,8 @@
 import { Action } from './action';
 import { debug, setFailed } from '@actions/core';
+import PrettyError from 'pretty-error';
+
+const pe = new PrettyError();
 
 (async () => {
   try {
@@ -7,7 +10,7 @@ import { debug, setFailed } from '@actions/core';
     await action.run();
   } catch (e) {
     if (e instanceof Error) {
-      debug(`Error thrown: ${e}`);
+      debug(pe.render(e));
       setFailed(e.message);
       return;
     }

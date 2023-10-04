@@ -1,4 +1,4 @@
-import { debug, getInput, info, setFailed } from '@actions/core';
+import { debug, getInput, info } from '@actions/core';
 import * as artifact from '@actions/artifact';
 import {
   LambdaClient,
@@ -10,8 +10,9 @@ import {
 } from '@aws-sdk/client-lambda';
 import {
   CloudFrontClient,
-  //   UpdateDistributionCommand,
+  UpdateDistributionCommand,
   GetDistributionConfigCommand,
+  CreateInvalidationCommand,
 } from '@aws-sdk/client-cloudfront';
 import fs from 'fs';
 import archiver from 'archiver';
@@ -19,6 +20,7 @@ import crypto from 'crypto';
 
 const { GITHUB_REPOSITORY } = process.env;
 
+const RUNTIME = 'nodejs18.x';
 const LAMBDA_FN = `
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -56,6 +58,7 @@ export class Action {
     const lambdaEdgeRole =
       getInput('lambda-edge-role', { required: false }) || process.env.AWS_LAMBDA_EDGE_ROLE;
     const workingDirectory = getInput('working-directory', { required: false }) || '.';
+    const invalidate = getInput('invalidate', { required: false }) || undefined;
 
     const [, repository] = (GITHUB_REPOSITORY || '').split('/');
 
@@ -76,46 +79,66 @@ export class Action {
         'base64',
       )}`,
     );
+
     debug(
       `lambdaEdgeRole: ${Buffer.from(Buffer.from(lambdaEdgeRole).toString('base64')).toString(
         'base64',
       )}`,
     );
 
-    try {
-      const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
-      let { functionArn, codeSha, changed } = await this.uploadLambda(
-        functionNamePrefix,
-        lambdaEdgeRole,
-        functionZipFile,
-      );
+    const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
+    let { functionArn, codeSha, changed } = await this.uploadLambda(
+      functionNamePrefix,
+      lambdaEdgeRole,
+      functionZipFile,
+    );
 
-      await this.ensurePermissions(functionArn);
+    await this.ensurePermissions(functionArn);
 
-      if (changed) {
-        functionArn = await this.publishLambda(functionArn, codeSha);
-        await this.updateCloudFront(distributionId, functionArn);
-      }
-    } catch (e: any) {
-      setFailed(e.message);
-      // throw e;
+    if (changed) {
+      functionArn = await this.publishLambda(functionArn, codeSha);
+      await this.updateCloudFront(distributionId, functionArn);
+    }
+
+    if (invalidate) {
+      await this.invalidateCloudFront(distributionId, invalidate);
     }
   }
 
   async bundleLambda(workingDirectory: string, distributionId: string): Promise<string> {
     info('Bundling Lambda Function...');
 
-    const routesManifest = JSON.stringify(
-      JSON.parse(fs.readFileSync(`${workingDirectory}/.next/routes-manifest.json`).toString()),
-    );
+    let routesManifest, pagesManifest: string;
+
+    try {
+      routesManifest = JSON.stringify(
+        JSON.parse(fs.readFileSync(`${workingDirectory}/.next/routes-manifest.json`).toString()),
+      );
+    } catch (e: unknown) {
+      throw new Error(
+        `Error reading ${workingDirectory}/.next/routes-manifest.json. Did you run \`next export\`?`,
+        {
+          cause: e,
+        },
+      );
+    }
 
     debug(`Routes Manifest:\n${routesManifest}`);
 
-    const pagesManifest = JSON.stringify(
-      JSON.parse(
-        fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`).toString(),
-      ),
-    );
+    try {
+      pagesManifest = JSON.stringify(
+        JSON.parse(
+          fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`).toString(),
+        ),
+      );
+    } catch (e: unknown) {
+      throw new Error(
+        `Error reading ${workingDirectory}/.next/server/pages-manifest.json. Did you run \`next export\`?`,
+        {
+          cause: e,
+        },
+      );
+    }
 
     debug(`Pages Manifest:\n${pagesManifest}`);
 
@@ -125,7 +148,7 @@ export class Action {
 *
 *     GitHub Repository: ${GITHUB_REPOSITORY}
 *     Distrubition ID: ${distributionId}
-*     Runtime: nodejs18.x
+*     Runtime: ${RUNTIME}
 *     Purpose: CloudFront Origin Request for Next.js
 *
 */
@@ -159,8 +182,7 @@ ${LAMBDA_FN}
     });
 
     archive.on('error', function (err) {
-      setFailed(`Failed to bundle Lambda Function: ${err.message}`);
-      throw err;
+      throw new Error(`Error archiving Lambda Function`, { cause: err });
     });
 
     archive.pipe(output);
@@ -263,7 +285,7 @@ ${LAMBDA_FN}
             Code: {
               ZipFile,
             },
-            Runtime: 'nodejs18.x',
+            Runtime: RUNTIME,
           }),
         );
 
@@ -279,9 +301,8 @@ ${LAMBDA_FN}
 
         return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       }
-    } catch (e: any) {
-      setFailed(`Failed to upload Lambda Function: ${e.message}`);
-      throw e;
+    } catch (err: unknown) {
+      throw new Error(`Error uploading Lambda Function`, { cause: err });
     }
   }
 
@@ -314,9 +335,8 @@ ${LAMBDA_FN}
           }, 1000);
         });
       }
-    } catch (e: any) {
-      setFailed(`Failed to get Lambda Function: ${e.message}`);
-      throw e;
+    } catch (err: any) {
+      throw new Error(`Error getting Lambda Function`, { cause: err });
     }
 
     try {
@@ -333,9 +353,8 @@ ${LAMBDA_FN}
       }
 
       return FunctionArn;
-    } catch (e: any) {
-      setFailed(`Failed to publish Lambda Function: ${e.message}`);
-      throw e;
+    } catch (err: any) {
+      throw new Error(`Error publishing Lambda Function`, { cause: err });
     }
   }
 
@@ -391,18 +410,50 @@ ${LAMBDA_FN}
         ],
       };
 
-      //   const response = await cloudfront.send(
-      //     new UpdateDistributionCommand({
-      //       Id: distributionId,
-      //       DistributionConfig: distributionConfig.DistributionConfig,
-      //       IfMatch: distributionConfig.ETag, // needed for conditional updates
-      //     }),
-      //   );
+      const response = await cloudfront.send(
+        new UpdateDistributionCommand({
+          Id: distributionId,
+          DistributionConfig: distributionConfig.DistributionConfig,
+          IfMatch: distributionConfig.ETag, // needed for conditional updates
+        }),
+      );
 
-      //   debug('UpdateDistributionCommand Response: ' + JSON.stringify(response));
-    } catch (e: any) {
-      setFailed(`Failed to update CloudFront Distribution: ${e.message}`);
-      throw e;
+      debug('UpdateDistributionCommand Response: ' + JSON.stringify(response));
+    } catch (err: unknown) {
+      throw new Error(`Error updating CloudFront Distribution`, { cause: err });
+    }
+  }
+
+  async invalidateCloudFront(distributionId: string, path: string): Promise<void> {
+    info(`Invalidating CloudFront Distribution ${distributionId} path: ${path}`);
+
+    const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
+
+    try {
+      const response = await cloudfront.send(
+        new CreateInvalidationCommand({
+          DistributionId: distributionId,
+          InvalidationBatch: {
+            Paths: {
+              Quantity: 1,
+              Items: [path],
+            },
+            CallerReference: `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_NUMBER}`,
+          },
+        }),
+      );
+
+      debug('CreateInvalidationCommand Response: ' + JSON.stringify(response));
+
+      const { Invalidation } = response;
+
+      if (!Invalidation || !Invalidation.Id || !Invalidation.Status) {
+        throw new Error('Invalidation is missing properties');
+      }
+
+      info(`Invalidation created: ${Invalidation.Id}, status: ${Invalidation.Status}`);
+    } catch (err: unknown) {
+      throw new Error(`Error invalidating CloudFront Distribution`, { cause: err });
     }
   }
 }

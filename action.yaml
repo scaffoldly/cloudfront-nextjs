@@ -17,9 +17,9 @@ inputs:
     description: The working directory
     required: false
     default: '.'
-outputs:
-  todo:
-    description: The todo description
+  invalidate:
+    description: Invalidate the CloudFront cache at the given path, e.g. '/*' or '/index.html'. If ommitted, the cache will not be invalidated.
+    required: false
 runs:
   using: 'node16'
   main: 'dist/main.js'

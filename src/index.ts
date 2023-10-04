@@ -1,5 +1,5 @@
 import { Action } from './action';
-import { setFailed } from '@actions/core';
+import { debug, setFailed } from '@actions/core';
 
 (async () => {
   try {
@@ -7,6 +7,7 @@ import { setFailed } from '@actions/core';
     await action.run();
   } catch (e) {
     if (e instanceof Error) {
+      debug(`Error thrown: ${e}`);
       setFailed(e.message);
       return;
     }

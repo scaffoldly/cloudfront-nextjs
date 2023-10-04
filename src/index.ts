@@ -10,16 +10,14 @@ const pe = new PrettyError();
     await action.run();
   } catch (e) {
     if (e instanceof Error) {
-      debug(pe.render(e));
-
       if (e.cause && e.cause instanceof Error) {
         debug(`Caused by: ${pe.render(e.cause)}`);
         setFailed(`Error: ${e.message}, Caused by: ${e.cause.message}`);
       } else {
+        debug(pe.render(e));
         setFailed(e.message);
       }
-
-      return;
+      process.exit(1);
     }
     throw e;
   }

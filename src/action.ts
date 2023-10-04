@@ -406,6 +406,7 @@ ${LAMBDA_FN}
           {
             EventType: 'origin-request',
             LambdaFunctionARN: functionArn,
+            IncludeBody: false,
           },
         ],
       };
@@ -414,7 +415,7 @@ ${LAMBDA_FN}
         new UpdateDistributionCommand({
           Id: distributionId,
           DistributionConfig: distributionConfig.DistributionConfig,
-          IfMatch: distributionConfig.ETag, // needed for conditional updates
+          // IfMatch: distributionConfig.ETag, // needed for conditional updates
         }),
       );
 

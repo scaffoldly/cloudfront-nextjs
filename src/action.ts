@@ -415,7 +415,7 @@ ${LAMBDA_FN}
         new UpdateDistributionCommand({
           Id: distributionId,
           DistributionConfig: distributionConfig.DistributionConfig,
-          // IfMatch: distributionConfig.ETag, // needed for conditional updates
+          IfMatch: distributionConfig.ETag, // needed for conditional updates
         }),
       );
 

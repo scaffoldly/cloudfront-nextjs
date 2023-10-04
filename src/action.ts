@@ -244,6 +244,7 @@ ${LAMBDA_FN}
           );
         }
 
+        info(`Existing Function ARN: ${FunctionArn}`);
         info(`Existing Function SHA: ${localSha}`);
 
         functionArn = FunctionArn;
@@ -254,7 +255,7 @@ ${LAMBDA_FN}
         }
       }
 
-      if (functionArn && localSha === remoteSha) {
+      if (functionArn && remoteSha && localSha.trim() === remoteSha.trim()) {
         info('Function code has not changed, skipping upload');
         return { functionArn, codeSha: remoteSha, changed: false };
       }

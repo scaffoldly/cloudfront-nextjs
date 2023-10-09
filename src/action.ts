@@ -253,10 +253,10 @@ ${LAMBDA_FN}
       // Attempt to fetch the function and its CodeSha256 property
       try {
         const response = await lambdaClient.send(
-          new GetFunctionCommand({ FunctionName: `${functionName}:$LATEST` }),
+          new GetFunctionCommand({ FunctionName: functionName }),
         );
 
-        info('GetFunctionCommand Response: ' + JSON.stringify(response));
+        debug('GetFunctionCommand Response: ' + JSON.stringify(response));
 
         const { Configuration } = response;
         if (!Configuration) {
@@ -282,12 +282,7 @@ ${LAMBDA_FN}
         }
       }
 
-      console.log('!!! functionArn', functionArn);
-      console.log('!!! remoteSha', remoteSha);
-      console.log('!!! localSha', localSha);
-
-      // Purposefully using "==" to check
-      if (functionArn && remoteSha && localSha.trim() == remoteSha.trim()) {
+      if (functionArn && remoteSha && localSha.trim() === remoteSha.trim()) {
         info('Function code has not changed, skipping upload');
         return { functionArn, codeSha: remoteSha, changed: false };
       }

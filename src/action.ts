@@ -13,6 +13,7 @@ import {
   GetDistributionConfigCommand,
   CreateInvalidationCommand,
   GetDistributionCommand,
+  GetInvalidationCommand,
 } from '@aws-sdk/client-cloudfront';
 import fs from 'fs';
 import archiver from 'archiver';
@@ -56,7 +57,10 @@ const normalize = (obj: any) => {
   return Object.keys(obj)
     .sort()
     .reduce((acc: any, key: string) => {
-      if (typeof obj[key] === 'object' && obj[key] !== null) {
+      if (Array.isArray(obj[key])) {
+        // Don't touch arrays
+        acc[key] = obj[key];
+      } else if (typeof obj[key] === 'object' && obj[key] !== null) {
         // If the property is an object, recursively sort its keys.
         acc[key] = normalize(obj[key]);
       } else {
@@ -499,12 +503,12 @@ ${LAMBDA_FN}
       }
 
       info(`Invalidation created: ${Invalidation.Id}, status: ${Invalidation.Status}`);
+
+      if (waitForDeployment) {
+        await this.awaitInvalidation(distributionId, Invalidation.Id);
+      }
     } catch (err: unknown) {
       throw new Error(`Error invalidating CloudFront Distribution`, { cause: err });
-    }
-
-    if (waitForDeployment) {
-      await this.awaitDeployment(distributionId);
     }
   }
 
@@ -546,6 +550,48 @@ ${LAMBDA_FN}
       });
     } catch (err: unknown) {
       throw new Error(`Error getting CloudFront Distribution`, { cause: err });
+    }
+  }
+
+  async awaitInvalidation(distributionId: string, invalidationId: string): Promise<void> {
+    const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
+
+    try {
+      const response = await cloudfront.send(
+        new GetInvalidationCommand({
+          DistributionId: distributionId,
+          Id: invalidationId,
+        }),
+      );
+
+      debug('GetInvalidationCommand Response: ' + JSON.stringify(response));
+
+      const { Invalidation } = response;
+
+      if (!Invalidation || !Invalidation.Status || !Invalidation.Id) {
+        throw new Error('Distribution is missing properties');
+      }
+
+      if (Invalidation.Status === 'Completed') {
+        info(`CloudFront Distribution Invalidation ${invalidationId} has been completed`);
+        return;
+      }
+
+      info(`CloudFront Distribution invalidation status is ${Invalidation.Status}, waiting...`);
+
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            this.awaitInvalidation(distributionId, invalidationId).then(() => {
+              resolve();
+            });
+          } catch (e: unknown) {
+            reject(e);
+          }
+        }, 5000);
+      });
+    } catch (err: unknown) {
+      throw new Error(`Error getting CloudFront Invalidation`, { cause: err });
     }
   }
 }

@@ -48,7 +48,7 @@ exports.handler = async (event) => {
 `;
 
 function sha256(buffer: Buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('base64');
+  return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
 export class Action {
@@ -256,10 +256,9 @@ ${LAMBDA_FN}
         }
       }
 
-      const textEncoder = new TextEncoder();
       console.log('!!! functionArn', functionArn);
-      console.log('!!! remoteSha', JSON.stringify(textEncoder.encode(remoteSha)));
-      console.log('!!! localSha', JSON.stringify(textEncoder.encode(localSha)));
+      console.log('!!! remoteSha', remoteSha);
+      console.log('!!! localSha', localSha);
 
       // Purposefully using "==" to check
       if (functionArn && remoteSha && localSha.trim() == remoteSha.trim()) {
@@ -337,14 +336,11 @@ ${LAMBDA_FN}
       const { State, LastUpdateStatus } = Configuration;
 
       if (State !== 'Active' || LastUpdateStatus !== 'Successful') {
-        info(
-          `Waiting for ${functionArn} deployment... (State: ${State}, Status:${LastUpdateStatus})`,
-        );
+        info(`Waiting for ${functionArn} deployment...`);
         return new Promise((resolve, reject) => {
           setTimeout(() => {
             try {
               this.awaitPublish(functionArn, codeSha).then((functionArn) => {
-                info(`${functionArn} deployed! (State: ${State}, Status:${LastUpdateStatus})`);
                 resolve(functionArn);
               });
             } catch (e: unknown) {

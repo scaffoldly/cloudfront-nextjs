@@ -29,7 +29,7 @@ exports.handler = async (event) => {
 
   // Function to remove /pages prefix
   const removePagesPrefix = (path) => {
-    return path.replace('pages/', '');
+    return path.replace('pages/', '/');
   };
 
   // Find matching route, ensuring route.regex is present

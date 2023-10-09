@@ -17,6 +17,7 @@ import {
 import fs from 'fs';
 import archiver from 'archiver';
 import crypto from 'crypto';
+import packageJson from '../package.json';
 
 const { GITHUB_REPOSITORY } = process.env;
 
@@ -48,7 +49,7 @@ exports.handler = async (event) => {
 `;
 
 function sha256(buffer: Buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex');
+  return crypto.createHash('sha256').update(buffer).digest('base64');
 }
 
 export class Action {
@@ -143,15 +144,14 @@ export class Action {
 
     debug(`Pages Manifest:\n${pagesManifest}`);
 
-    let lambdaFn = `
+    let originRequestFn = `
 /*
-* This script is managed by the cloudfront-nextjs GitHub Action.
+* This script is managed by the ${packageJson.name}@${packageJson.version} GitHub Action.
 *
 *     GitHub Repository: ${GITHUB_REPOSITORY}
 *     Distrubition ID: ${distributionId}
 *     Runtime: ${RUNTIME}
 *     Purpose: CloudFront Origin Request for Next.js
-*
 */
 const routesManifest = ${routesManifest};
 
@@ -172,7 +172,7 @@ ${LAMBDA_FN}
     fs.mkdirSync(lambdadir);
 
     const lambdaFile = `${workdir}/index.js`;
-    fs.writeFileSync(lambdaFile, lambdaFn);
+    fs.writeFileSync(lambdaFile, originRequestFn);
 
     const outputFile = `${lambdadir}/lambda.zip`;
     const output = fs.createWriteStream(outputFile);

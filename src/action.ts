@@ -212,8 +212,7 @@ ${LAMBDA_FN}
     archive.pipe(output);
     archive.append(originRequestFn, {
       name: 'index.js',
-      date: new Date(2000, 0, 0, 0, 0, 0, 0),
-      mode: 0o755,
+      date: new Date(2023, 0, 1, 0, 0, 0, 0),
     });
 
     await archive.finalize();

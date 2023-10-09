@@ -194,13 +194,8 @@ const combinedRoutes = [
 ${LAMBDA_FN}
     `;
 
-    const workdir = `/tmp/${distributionId}`;
-    const lambdadir = `/tmp/${distributionId}-lambda`;
-    fs.mkdirSync(workdir);
+    const lambdadir = `/tmp/${distributionId}`;
     fs.mkdirSync(lambdadir);
-
-    const lambdaFile = `${workdir}/index.js`;
-    fs.writeFileSync(lambdaFile, originRequestFn);
 
     const outputFile = `${lambdadir}/lambda.zip`;
     const output = fs.createWriteStream(outputFile);
@@ -215,7 +210,11 @@ ${LAMBDA_FN}
     });
 
     archive.pipe(output);
-    archive.directory(workdir, false);
+    archive.append(originRequestFn, {
+      name: 'index.js',
+      date: new Date(2000, 0, 0, 0, 0, 0, 0),
+      mode: 0o755,
+    });
 
     await archive.finalize();
 

@@ -261,7 +261,8 @@ ${LAMBDA_FN}
       console.log('!!! remoteSha', JSON.stringify(textEncoder.encode(remoteSha)));
       console.log('!!! localSha', JSON.stringify(textEncoder.encode(localSha)));
 
-      if (functionArn && remoteSha && localSha.trim() === remoteSha.trim()) {
+      // Purposefully using "==" to check
+      if (functionArn && remoteSha && localSha.trim() == remoteSha.trim()) {
         info('Function code has not changed, skipping upload');
         return { functionArn, codeSha: remoteSha, changed: false };
       }
@@ -343,6 +344,7 @@ ${LAMBDA_FN}
           setTimeout(() => {
             try {
               this.awaitPublish(functionArn, codeSha).then((functionArn) => {
+                info(`${functionArn} deployed! (State: ${State}, Status:${LastUpdateStatus})`);
                 resolve(functionArn);
               });
             } catch (e: unknown) {
@@ -523,7 +525,7 @@ ${LAMBDA_FN}
         return;
       }
 
-      info(`CloudFront Distribution ${distributionId} is ${Distribution.Status}, waiting...`);
+      info(`CloudFront Distribution deployment status is ${Distribution.Status}, waiting...`);
 
       return new Promise((resolve, reject) => {
         setTimeout(() => {
@@ -534,7 +536,7 @@ ${LAMBDA_FN}
           } catch (e: unknown) {
             reject(e);
           }
-        }, 1000);
+        }, 5000);
       });
     } catch (err: unknown) {
       throw new Error(`Error getting CloudFront Distribution`, { cause: err });

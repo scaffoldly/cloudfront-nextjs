@@ -105,7 +105,11 @@ export class Action {
       )}`,
     );
 
-    const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
+    const functionZipFile = await this.bundleLambda(
+      workingDirectory,
+      distributionId,
+      lambdaEdgeRole,
+    );
     let { functionArn, codeSha, changed } = await this.uploadLambda(
       functionNamePrefix,
       lambdaEdgeRole,
@@ -122,7 +126,11 @@ export class Action {
     }
   }
 
-  async bundleLambda(workingDirectory: string, distributionId: string): Promise<string> {
+  async bundleLambda(
+    workingDirectory: string,
+    distributionId: string,
+    roleArn: string,
+  ): Promise<string> {
     info('Bundling Lambda Function...');
 
     let routesManifest, pagesManifest: string;
@@ -170,6 +178,7 @@ export class Action {
 *     GitHub Repository: ${GITHUB_REPOSITORY}
 *     Distrubition ID: ${distributionId}
 *     Runtime: ${RUNTIME}
+*     Execution Role: ${roleArn}
 *     Purpose: CloudFront Origin Request for Next.js
 */
 const routesManifest = ${routesManifest};
@@ -249,7 +258,7 @@ ${LAMBDA_FN}
           new GetFunctionCommand({ FunctionName: `${functionName}:$LATEST` }),
         );
 
-        debug('GetFunctionCommand Response: ' + JSON.stringify(response));
+        info('GetFunctionCommand Response: ' + JSON.stringify(response));
 
         const { Configuration } = response;
         if (!Configuration) {
@@ -265,7 +274,7 @@ ${LAMBDA_FN}
         }
 
         info(`Existing Function ARN: ${FunctionArn}`);
-        info(`Existing Function SHA: ${localSha}`);
+        info(`Existing Function SHA: ${CodeSha256}`);
 
         functionArn = FunctionArn;
         remoteSha = CodeSha256;

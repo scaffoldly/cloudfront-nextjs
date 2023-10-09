@@ -19,6 +19,7 @@ import fs from 'fs';
 import archiver from 'archiver';
 import crypto from 'crypto';
 import packageJson from '../package.json';
+import { ErrorWithCause } from './error';
 
 const { GITHUB_REPOSITORY } = process.env;
 
@@ -89,11 +90,11 @@ export class Action {
       getInput('function-name-prefix', { required: false }) || `${repository}-${distributionId}-`;
 
     if (!distributionId) {
-      throw new Error("Missing required input 'distribution-id'");
+      throw new ErrorWithCause("Missing required input 'distribution-id'");
     }
 
     if (!lambdaEdgeRole) {
-      throw new Error("Missing required input 'lambda-edge-role'");
+      throw new ErrorWithCause("Missing required input 'lambda-edge-role'");
     }
 
     // Double Base64 so it can get out of Secret Masking
@@ -147,7 +148,7 @@ export class Action {
         ),
       );
     } catch (e: unknown) {
-      throw new Error(
+      throw new ErrorWithCause(
         `Error reading ${workingDirectory}/.next/routes-manifest.json. Did you run \`next export\`?`,
         {
           cause: e,
@@ -166,7 +167,7 @@ export class Action {
         ),
       );
     } catch (e: unknown) {
-      throw new Error(
+      throw new ErrorWithCause(
         `Error reading ${workingDirectory}/.next/server/pages-manifest.json. Did you run \`next export\`?`,
         {
           cause: e,
@@ -192,8 +193,8 @@ const pagesManifest = ${pagesManifest};
 
 // Combine dynamic and static routes into a single array in the global scope, ensuring they exist or defaulting to empty arrays
 const combinedRoutes = [
-    ...(routesManifest.dynamicRoutes || []),
     ...(routesManifest.staticRoutes || []),
+    ...(routesManifest.dynamicRoutes || []),
 ];
 
 ${LAMBDA_FN}
@@ -211,7 +212,7 @@ ${LAMBDA_FN}
     });
 
     archive.on('error', function (err) {
-      throw new Error(`Error archiving Lambda Function`, { cause: err });
+      throw new ErrorWithCause(`Error archiving Lambda Function`, { cause: err });
     });
 
     archive.pipe(output);
@@ -265,13 +266,13 @@ ${LAMBDA_FN}
 
         const { Configuration } = response;
         if (!Configuration) {
-          throw new Error('Invalid GetFunctionCommand response');
+          throw new ErrorWithCause('Invalid GetFunctionCommand response');
         }
 
         const { FunctionArn, CodeSha256 } = Configuration;
 
         if (!FunctionArn || !CodeSha256) {
-          throw new Error(
+          throw new ErrorWithCause(
             'FunctionArn or CodeSha256 was missing from the GetFunctionCommand response',
           );
         }
@@ -306,7 +307,7 @@ ${LAMBDA_FN}
         const { FunctionArn, CodeSha256 } = response;
 
         if (!FunctionArn || !CodeSha256) {
-          throw new Error('Invalid UpdateFunctionCodeCommand response');
+          throw new ErrorWithCause('Invalid UpdateFunctionCodeCommand response');
         }
 
         info(`Function code updated: ${response.FunctionArn}, new sha is ${CodeSha256}`);
@@ -331,7 +332,9 @@ ${LAMBDA_FN}
         const { FunctionArn, CodeSha256 } = response;
 
         if (!FunctionArn || !CodeSha256) {
-          throw new Error('FunctionArn was missing from the CreateFunctionCommand response');
+          throw new ErrorWithCause(
+            'FunctionArn was missing from the CreateFunctionCommand response',
+          );
         }
 
         info(`Function created: ${response.FunctionArn}, sha is ${CodeSha256}`);
@@ -339,7 +342,7 @@ ${LAMBDA_FN}
         return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       }
     } catch (err: unknown) {
-      throw new Error(`Error uploading Lambda Function`, { cause: err });
+      throw new ErrorWithCause(`Error uploading Lambda Function`, { cause: err });
     }
   }
 
@@ -356,7 +359,7 @@ ${LAMBDA_FN}
       const { Configuration } = response;
 
       if (!Configuration) {
-        throw new Error('Invalid GetFunctionCommand response');
+        throw new ErrorWithCause('Invalid GetFunctionCommand response');
       }
 
       const { State, LastUpdateStatus } = Configuration;
@@ -378,7 +381,7 @@ ${LAMBDA_FN}
 
       return functionArn;
     } catch (err: any) {
-      throw new Error(`Error getting Lambda Function`, { cause: err });
+      throw new ErrorWithCause(`Error getting Lambda Function`, { cause: err });
     }
   }
 
@@ -425,7 +428,7 @@ ${LAMBDA_FN}
         !distributionConfig.ETag ||
         !distributionConfig.DistributionConfig.DefaultCacheBehavior
       ) {
-        throw new Error('DistributionConfig is missing properties');
+        throw new ErrorWithCause('DistributionConfig is missing properties');
       }
 
       let { LambdaFunctionAssociations: lambdas } =
@@ -463,7 +466,7 @@ ${LAMBDA_FN}
 
       debug('UpdateDistributionCommand Response: ' + JSON.stringify(response));
     } catch (err: unknown) {
-      throw new Error(`Error updating CloudFront Distribution`, { cause: err });
+      throw new ErrorWithCause(`Error updating CloudFront Distribution`, { cause: err });
     }
 
     if (waitForDeployment) {
@@ -499,7 +502,7 @@ ${LAMBDA_FN}
       const { Invalidation } = response;
 
       if (!Invalidation || !Invalidation.Id || !Invalidation.Status) {
-        throw new Error('Invalidation is missing properties');
+        throw new ErrorWithCause('Invalidation is missing properties');
       }
 
       info(`Invalidation created: ${Invalidation.Id}, status: ${Invalidation.Status}`);
@@ -508,7 +511,7 @@ ${LAMBDA_FN}
         await this.awaitInvalidation(distributionId, Invalidation.Id);
       }
     } catch (err: unknown) {
-      throw new Error(`Error invalidating CloudFront Distribution`, { cause: err });
+      throw new ErrorWithCause(`Error invalidating CloudFront Distribution`, { cause: err });
     }
   }
 
@@ -527,7 +530,7 @@ ${LAMBDA_FN}
       const { Distribution } = response;
 
       if (!Distribution || !Distribution.Status || !Distribution.Id) {
-        throw new Error('Distribution is missing properties');
+        throw new ErrorWithCause('Distribution is missing properties');
       }
 
       if (Distribution.Status === 'Deployed') {
@@ -549,7 +552,7 @@ ${LAMBDA_FN}
         }, 5000);
       });
     } catch (err: unknown) {
-      throw new Error(`Error getting CloudFront Distribution`, { cause: err });
+      throw new ErrorWithCause(`Error getting CloudFront Distribution`, { cause: err });
     }
   }
 
@@ -569,7 +572,7 @@ ${LAMBDA_FN}
       const { Invalidation } = response;
 
       if (!Invalidation || !Invalidation.Status || !Invalidation.Id) {
-        throw new Error('Distribution is missing properties');
+        throw new ErrorWithCause('Distribution is missing properties');
       }
 
       if (Invalidation.Status === 'Completed') {
@@ -591,7 +594,7 @@ ${LAMBDA_FN}
         }, 5000);
       });
     } catch (err: unknown) {
-      throw new Error(`Error getting CloudFront Invalidation`, { cause: err });
+      throw new ErrorWithCause(`Error getting CloudFront Invalidation`, { cause: err });
     }
   }
 }

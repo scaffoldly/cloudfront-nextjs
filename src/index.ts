@@ -1,6 +1,7 @@
 import { Action } from './action';
 import { debug, setFailed } from '@actions/core';
 import PrettyError from 'pretty-error';
+import { ErrorWithCause } from './error';
 
 const pe = new PrettyError();
 
@@ -9,7 +10,7 @@ const pe = new PrettyError();
     const action = new Action();
     await action.run();
   } catch (e) {
-    if (e instanceof Error) {
+    if (e instanceof ErrorWithCause) {
       if (e.cause && e.cause instanceof Error) {
         debug(`Caused by: ${pe.render(e.cause)}`);
         setFailed(`Error: ${e.message}, Caused by: ${e.cause.message}`);

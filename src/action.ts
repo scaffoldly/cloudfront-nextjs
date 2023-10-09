@@ -48,9 +48,24 @@ exports.handler = async (event) => {
 };
 `;
 
-function sha256(buffer: Buffer) {
+const sha256 = (buffer: Buffer) => {
   return crypto.createHash('sha256').update(buffer).digest('base64');
-}
+};
+
+const normalize = (obj: any) => {
+  return Object.keys(obj)
+    .sort()
+    .reduce((acc: any, key: string) => {
+      if (typeof obj[key] === 'object' && obj[key] !== null) {
+        // If the property is an object, recursively sort its keys.
+        acc[key] = normalize(obj[key]);
+      } else {
+        // Otherwise, simply add it to the accumulator object.
+        acc[key] = obj[key];
+      }
+      return acc;
+    }, {});
+};
 
 export class Action {
   async run(): Promise<void> {
@@ -114,7 +129,9 @@ export class Action {
 
     try {
       routesManifest = JSON.stringify(
-        JSON.parse(fs.readFileSync(`${workingDirectory}/.next/routes-manifest.json`).toString()),
+        normalize(
+          JSON.parse(fs.readFileSync(`${workingDirectory}/.next/routes-manifest.json`).toString()),
+        ),
       );
     } catch (e: unknown) {
       throw new Error(
@@ -129,8 +146,10 @@ export class Action {
 
     try {
       pagesManifest = JSON.stringify(
-        JSON.parse(
-          fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`).toString(),
+        normalize(
+          JSON.parse(
+            fs.readFileSync(`${workingDirectory}/.next/server/pages-manifest.json`).toString(),
+          ),
         ),
       );
     } catch (e: unknown) {

@@ -12,6 +12,7 @@ import {
   UpdateDistributionCommand,
   GetDistributionConfigCommand,
   CreateInvalidationCommand,
+  GetDistributionCommand,
 } from '@aws-sdk/client-cloudfront';
 import fs from 'fs';
 import archiver from 'archiver';
@@ -27,7 +28,7 @@ exports.handler = async (event) => {
 
   // Function to remove /pages prefix
   const removePagesPrefix = (path) => {
-    return path.replace('/pages', '');
+    return path.replace('pages/', '');
   };
 
   // Find matching route, ensuring route.regex is present
@@ -58,6 +59,9 @@ export class Action {
       getInput('lambda-edge-role', { required: false }) || process.env.AWS_LAMBDA_EDGE_ROLE;
     const workingDirectory = getInput('working-directory', { required: false }) || '.';
     const invalidate = getInput('invalidate', { required: false }) || undefined;
+    const waitForDeployment = Boolean(
+      getInput('wait-for-deployment', { required: false }) || 'true',
+    );
 
     const [, repository] = (GITHUB_REPOSITORY || '').split('/');
 
@@ -86,7 +90,7 @@ export class Action {
     );
 
     const functionZipFile = await this.bundleLambda(workingDirectory, distributionId);
-    let { functionArn, codeSha } = await this.uploadLambda(
+    let { functionArn, codeSha, changed } = await this.uploadLambda(
       functionNamePrefix,
       lambdaEdgeRole,
       functionZipFile,
@@ -95,10 +99,10 @@ export class Action {
     functionArn = await this.awaitPublish(functionArn, codeSha);
 
     await this.ensurePermissions(functionArn);
-    await this.updateCloudFront(distributionId, functionArn);
+    await this.updateCloudFront(distributionId, functionArn, waitForDeployment);
 
-    if (invalidate) {
-      await this.invalidateCloudFront(distributionId, invalidate);
+    if (!changed && invalidate) {
+      await this.invalidateCloudFront(distributionId, invalidate, waitForDeployment);
     }
   }
 
@@ -206,7 +210,7 @@ ${LAMBDA_FN}
     functionNamePrefix: string,
     roleArn: string,
     functionZipFile: string,
-  ): Promise<{ functionArn: string; codeSha: string }> {
+  ): Promise<{ functionArn: string; codeSha: string; changed: boolean }> {
     info('Uploading Lambda Function...');
     const functionName = `${functionNamePrefix}origin-request`;
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
@@ -252,9 +256,14 @@ ${LAMBDA_FN}
         }
       }
 
+      const textEncoder = new TextEncoder();
+      console.log('!!! functionArn', functionArn);
+      console.log('!!! remoteSha', JSON.stringify(textEncoder.encode(remoteSha)));
+      console.log('!!! localSha', JSON.stringify(textEncoder.encode(localSha)));
+
       if (functionArn && remoteSha && localSha.trim() === remoteSha.trim()) {
         info('Function code has not changed, skipping upload');
-        return { functionArn, codeSha: remoteSha };
+        return { functionArn, codeSha: remoteSha, changed: false };
       }
 
       if (remoteSha) {
@@ -276,7 +285,7 @@ ${LAMBDA_FN}
 
         info(`Function code updated: ${response.FunctionArn}, new sha is ${CodeSha256}`);
 
-        return { functionArn: FunctionArn, codeSha: CodeSha256 };
+        return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       } else {
         const response = await lambdaClient.send(
           new CreateFunctionCommand({
@@ -301,7 +310,7 @@ ${LAMBDA_FN}
 
         info(`Function created: ${response.FunctionArn}, sha is ${CodeSha256}`);
 
-        return { functionArn: FunctionArn, codeSha: CodeSha256 };
+        return { functionArn: FunctionArn, codeSha: CodeSha256, changed: true };
       }
     } catch (err: unknown) {
       throw new Error(`Error uploading Lambda Function`, { cause: err });
@@ -309,7 +318,6 @@ ${LAMBDA_FN}
   }
 
   async awaitPublish(functionArn: string, codeSha: string): Promise<string> {
-    info('Publishing Lambda Function Version...');
     const lambdaClient = new LambdaClient({ region: 'us-east-1' });
 
     try {
@@ -328,7 +336,9 @@ ${LAMBDA_FN}
       const { State, LastUpdateStatus } = Configuration;
 
       if (State !== 'Active' || LastUpdateStatus !== 'Successful') {
-        info('Waiting for Lambda function to be Active and Successful');
+        info(
+          `Waiting for ${functionArn} deployment... (State: ${State}, Status:${LastUpdateStatus})`,
+        );
         return new Promise((resolve, reject) => {
           setTimeout(() => {
             try {
@@ -369,8 +379,12 @@ ${LAMBDA_FN}
     }
   }
 
-  async updateCloudFront(distributionId: string, functionArn: string): Promise<void> {
-    info(`Updating CloudFront Origin Request with Functiion ARN: ${functionArn}`);
+  async updateCloudFront(
+    distributionId: string,
+    functionArn: string,
+    waitForDeployment: boolean,
+  ): Promise<void> {
+    info(`Ensuring CloudFront has an Origin Request with Function ARN: ${functionArn}`);
 
     const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
 
@@ -401,7 +415,7 @@ ${LAMBDA_FN}
         lambdas.Items[0].EventType == 'origin-request' &&
         lambdas.Items[0].LambdaFunctionARN == functionArn
       ) {
-        info('Lambda Function already configured, skipping update');
+        info('Lambda Function has not changed, skipping update...');
         return;
       }
 
@@ -439,9 +453,17 @@ ${LAMBDA_FN}
     } catch (err: unknown) {
       throw new Error(`Error updating CloudFront Distribution`, { cause: err });
     }
+
+    if (waitForDeployment) {
+      await this.awaitDeployment(distributionId);
+    }
   }
 
-  async invalidateCloudFront(distributionId: string, path: string): Promise<void> {
+  async invalidateCloudFront(
+    distributionId: string,
+    path: string,
+    waitForDeployment: boolean,
+  ): Promise<void> {
     info(`Invalidating CloudFront Distribution ${distributionId} path: ${path}`);
 
     const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
@@ -471,6 +493,51 @@ ${LAMBDA_FN}
       info(`Invalidation created: ${Invalidation.Id}, status: ${Invalidation.Status}`);
     } catch (err: unknown) {
       throw new Error(`Error invalidating CloudFront Distribution`, { cause: err });
+    }
+
+    if (waitForDeployment) {
+      await this.awaitDeployment(distributionId);
+    }
+  }
+
+  async awaitDeployment(distributionId: string): Promise<void> {
+    const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
+
+    try {
+      const response = await cloudfront.send(
+        new GetDistributionCommand({
+          Id: distributionId,
+        }),
+      );
+
+      debug('GetDistributionCommand Response: ' + JSON.stringify(response));
+
+      const { Distribution } = response;
+
+      if (!Distribution || !Distribution.Status || !Distribution.Id) {
+        throw new Error('Distribution is missing properties');
+      }
+
+      if (Distribution.Status === 'Deployed') {
+        info(`CloudFront Distribution ${distributionId} has been deployed`);
+        return;
+      }
+
+      info(`CloudFront Distribution ${distributionId} is ${Distribution.Status}, waiting...`);
+
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            this.awaitDeployment(distributionId).then(() => {
+              resolve();
+            });
+          } catch (e: unknown) {
+            reject(e);
+          }
+        }, 1000);
+      });
+    } catch (err: unknown) {
+      throw new Error(`Error getting CloudFront Distribution`, { cause: err });
     }
   }
 }

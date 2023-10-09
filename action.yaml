@@ -20,6 +20,10 @@ inputs:
   invalidate:
     description: Invalidate the CloudFront cache at the given path, e.g. '/*' or '/index.html'. If ommitted, the cache will not be invalidated.
     required: false
+  wait-for-deployment:
+    description: Wait for CloudFront Deployment before exiting.
+    required: false
+    default: 'true'
 runs:
   using: 'node16'
   main: 'dist/main.js'

@@ -227,7 +227,7 @@ ${LAMBDA_FN}
       // Attempt to fetch the function and its CodeSha256 property
       try {
         const response = await lambdaClient.send(
-          new GetFunctionCommand({ FunctionName: functionName }),
+          new GetFunctionCommand({ FunctionName: `${functionName}:$LATEST` }),
         );
 
         debug('GetFunctionCommand Response: ' + JSON.stringify(response));

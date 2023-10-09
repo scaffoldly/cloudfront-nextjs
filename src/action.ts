@@ -116,10 +116,11 @@ export class Action {
       functionZipFile,
     );
 
-    functionArn = await this.awaitPublish(functionArn, codeSha);
-
-    await this.ensurePermissions(functionArn);
-    await this.updateCloudFront(distributionId, functionArn, waitForDeployment);
+    if (changed) {
+      functionArn = await this.awaitPublish(functionArn, codeSha);
+      await this.ensurePermissions(functionArn);
+      await this.updateCloudFront(distributionId, functionArn, waitForDeployment);
+    }
 
     if (!changed && invalidate) {
       await this.invalidateCloudFront(distributionId, invalidate, waitForDeployment);
@@ -425,18 +426,6 @@ ${LAMBDA_FN}
 
       let { LambdaFunctionAssociations: lambdas } =
         distributionConfig.DistributionConfig.DefaultCacheBehavior;
-
-      if (
-        lambdas &&
-        lambdas.Quantity == 1 &&
-        lambdas.Items &&
-        lambdas.Items.length == 1 &&
-        lambdas.Items[0].EventType == 'origin-request' &&
-        lambdas.Items[0].LambdaFunctionARN == functionArn
-      ) {
-        info('Lambda Function has not changed, skipping update...');
-        return;
-      }
 
       lambdas = {
         Quantity: 1,
